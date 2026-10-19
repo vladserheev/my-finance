@@ -23,3 +23,9 @@ option "operating_currency" "PLN"
   Equity:Початковий-Залишок
 
 include "transactions.beancount"
+
+2026-07-31 query "витрати-за-категоріями" "SELECT year, month, account, sum(position) AS \"сума\" WHERE account ~ '^Expenses' GROUP BY 1, 2, 3 ORDER BY 1, 2, 3"
+2026-07-31 query "дохід-і-витрати" "SELECT year, month, root(account, 1) AS \"тип\", sum(position) AS \"сума\" WHERE account ~ '^(Income:Зарплата|Expenses)' GROUP BY 1, 2, 3 ORDER BY 1, 2, 3"
+2026-07-31 query "фіксовані-проти-керованих" "SELECT year, month, joinstr(tags) AS \"теги\", sum(position) AS \"сума\" WHERE account ~ '^Expenses' GROUP BY 1, 2, 3 ORDER BY 1, 2, 3"
+2026-07-31 query "без-категорії" "SELECT date, narration, position WHERE account = 'Expenses:Без-Категорії' ORDER BY date"
+2026-07-31 query "інші-надходження" "SELECT date, narration, position WHERE account = 'Income:Інше' ORDER BY date"
