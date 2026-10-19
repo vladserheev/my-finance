@@ -7,6 +7,7 @@
 - Крок 1: каркас `main.beancount` (рахунки, початковий залишок 4 500 зл, `include`). `bean-check` пройшов без повідомлень. Порожня заготовка `transactions.beancount` (поза git).
 - Крок 2: у `rules.csv` додано Play (фіксована), Rossmann, Decathlon. Усі рахунки з правил відкриті в `main.beancount`, `bean-check` чистий.
 - Крок 3: `import.py` (`uv run python import.py`) створює `transactions.beancount`: 142 операції, жодної в «Без-Категорії», 17 з тегом `#fixed`. `bean-check` чистий.
+- Крок 4: `import.py` додає balance-твердження з колонки Balance: 1 вересня (8 596,30), 1 жовтня (12 305,39) і 16 жовтня (17 127,34). `bean-check` пройшов без повідомлень, облік збігається з банком. У «Без-Категорії» операцій немає.
 
 ## Далі
-- Крок 4: звірити залишок у Beancount з останнім Balance у виписці.
+- Крок 5: збережені запити (`query`) у `main.beancount`.
