@@ -1,9 +1,11 @@
 """Мала веб-сторінка для телефона: вхід за паролем, звіт за місяць і форма «Додати готівкову витрату».
 
 Налаштування лише зі змінних середовища (у коді й репозиторії паролів немає):
-  APP_USER, APP_PASSWORD — логін і пароль для входу;
-  SECRET_KEY             — довгий випадковий рядок для підпису сесії.
-Без них сторінка нічого не показує (відповідь 503).
+  OLYA_LOGIN, OLYA_PASSWORD_HASH   — логін Олі і хеш її пароля;
+  MARKO_LOGIN, MARKO_PASSWORD_HASH — логін Марка і хеш його пароля;
+  SECRET_KEY                       — довгий випадковий рядок для підпису сесії.
+Паролі зберігаються лише як хеші (як зробити хеш, див. README). Кожен бачить тільки свої дані.
+Без цих змінних сторінка нічого не показує (відповідь 503).
 Локальний запуск без HTTPS: ALLOW_HTTP=1 uv run flask --app app run
 """
 import hmac
@@ -15,6 +17,7 @@ from decimal import Decimal
 
 from flask import Flask, abort, redirect, render_template_string, request, session, url_for
 from werkzeug.middleware.proxy_fix import ProxyFix
+from werkzeug.security import check_password_hash
 
 import tracker
 
@@ -34,8 +37,12 @@ FAILED_LOGINS = []  # час невдалих спроб входу; після 
 MAX_FAILS, WINDOW = 8, 600
 
 
+USER_VARS = {"olya": ("OLYA_LOGIN", "OLYA_PASSWORD_HASH"), "marko": ("MARKO_LOGIN", "MARKO_PASSWORD_HASH")}
+
+
 def configured():
-    return all(os.environ.get(k) for k in ("APP_USER", "APP_PASSWORD", "SECRET_KEY"))
+    names = ["SECRET_KEY"] + [v for pair in USER_VARS.values() for v in pair]
+    return all(os.environ.get(k) for k in names)
 
 
 def zl(x):
@@ -128,14 +135,11 @@ LOGIN = """
 </form>"""
 
 REPORT = """
-<div class="top"><h1>Фінанси Олі й Марка</h1>
+<div class="top"><h1>{{ name }}: фінанси</h1>
 <form method="post" action="{{ url_for('logout') }}"><input type="hidden" name="csrf" value="{{ csrf_token() }}"><button class="link">Вийти</button></form></div>
 {% if message %}<div class="msg {{ 'ok' if ok else 'warn' }}">{{ message }}</div>{% endif %}
 <div class="tabs">
-{% for key, name in tabs %}<a href="{{ url_for('report', p=key, m=month_key) }}" class="{{ 'on' if key == person else '' }}">{{ name }}</a>{% endfor %}
-</div>
-<div class="tabs">
-{% for key, name in month_options %}<a href="{{ url_for('report', p=person, m=key) }}" class="{{ 'on' if key == month_key else '' }}">{{ name }}</a>{% endfor %}
+{% for key, name in month_options %}<a href="{{ url_for('report', m=key) }}" class="{{ 'on' if key == month_key else '' }}">{{ name }}</a>{% endfor %}
 </div>
 {% if incomplete %}<p class="note warn">Неповний місяць: виписка закінчується {{ last_date.day }} {{ last_month_gen }}.</p>{% endif %}
 <div class="cards">
@@ -155,9 +159,7 @@ REPORT = """
 <h2>Додати готівкову витрату</h2>
 <form method="post" action="{{ url_for('add') }}">
 <input type="hidden" name="csrf" value="{{ csrf_token() }}">
-<input type="hidden" name="back_p" value="{{ person }}"><input type="hidden" name="back_m" value="{{ month_key }}">
-<label for="who">Хто витратив</label>
-<select id="who" name="person">{% for key, name in people %}<option value="{{ key }}" {{ 'selected' if key == default_person else '' }}>{{ name }}</option>{% endfor %}</select>
+<input type="hidden" name="back_m" value="{{ month_key }}">
 <label for="amount">Сума, зл</label><input id="amount" name="amount" inputmode="decimal" placeholder="25,50" required>
 <label for="cat">Категорія</label>
 <select id="cat" name="category">{% for acc, name in accounts %}<option value="{{ acc }}">{{ name }}</option>{% endfor %}</select>
@@ -184,11 +186,15 @@ def login():
         if len(FAILED_LOGINS) >= MAX_FAILS:
             error = "Забагато невдалих спроб. Спробуйте за кілька хвилин."
         else:
-            user_ok = hmac.compare_digest(request.form.get("user", "").encode(), os.environ["APP_USER"].encode())
-            pass_ok = hmac.compare_digest(request.form.get("password", "").encode(), os.environ["APP_PASSWORD"].encode())
-            if user_ok and pass_ok:
+            who = None
+            for key, (login_var, hash_var) in USER_VARS.items():  # перевіряємо обох, щоб час відповіді не видавав логін
+                login_ok = hmac.compare_digest(request.form.get("user", "").encode(), os.environ[login_var].encode())
+                pass_ok = check_password_hash(os.environ[hash_var], request.form.get("password", ""))
+                if login_ok and pass_ok:
+                    who = key
+            if who:
                 session.clear()
-                session["user"] = os.environ["APP_USER"]
+                session["user"] = who
                 session.permanent = True
                 return redirect(url_for("report"))
             FAILED_LOGINS.append(now)
@@ -209,12 +215,10 @@ def report():
     entries, errors = tracker.load()
     if errors:
         abort(500)
-    person = request.args.get("p", "all")
-    if person not in tracker.PEOPLE:
-        person = "all"
-    stats = tracker.month_stats(entries, None if person == "all" else person)
-    all_months = sorted(tracker.month_stats(entries))
-    last_date = tracker.last_bank_date(entries)
+    person = session["user"]  # лише власні дані людини, яка увійшла
+    stats = tracker.month_stats(entries, person)
+    all_months = sorted(stats)
+    last_date = tracker.last_bank_date(entries, person)
     month = request.args.get("m", "")
     try:
         y, m = (int(x) for x in month.split("-"))
@@ -228,13 +232,11 @@ def report():
     incomplete = tracker.is_incomplete(key, last_date)
     accounts = [(a, tracker.short(a).replace("-", " ")) for a in tracker.expense_accounts(entries)]
     return page(
-        REPORT, message=message, ok=ok, person=person, month_key=f"{key[0]}-{key[1]:02d}",
-        tabs=[("all", "Разом"), ("olya", "Оля"), ("marko", "Марко")],
+        REPORT, message=message, ok=ok, name=tracker.PEOPLE[person], month_key=f"{key[0]}-{key[1]:02d}",
         month_options=[(f"{y}-{m:02d}", tracker.MONTH_NAMES[m]) for y, m in all_months],
         s=s, rate=rate, categories=[(a.replace("-", " "), v) for a, v in cats],
         incomplete=incomplete, last_date=last_date,
         last_month_gen=GENITIVE[last_date.month] if last_date else "",
-        people=[("marko", "Марко"), ("olya", "Оля")], default_person="marko",
         accounts=accounts, today=date.today().isoformat(),
     )
 
@@ -245,12 +247,13 @@ def add():
     entries, errors = tracker.load()
     if errors:
         abort(500)
-    data, error = tracker.parse_cash(request.form, tracker.expense_accounts(entries))
+    form = {**request.form.to_dict(), "person": session["user"]}  # людина визначається входом, а не формою
+    data, error = tracker.parse_cash(form, tracker.expense_accounts(entries))
     if error is None and not tracker.add_cash(data):
         error = "Облік відхилив запис, нічого не збережено."
     if error:
         session["flash"] = (error, False)
-        return redirect(url_for("report", p=request.form.get("back_p", "all"), m=request.form.get("back_m", "")))
+        return redirect(url_for("report", m=request.form.get("back_m", "")))
     session["flash"] = (f"Збережено: {tracker.PEOPLE[data['person']]}, {zl(data['amount'])}.", True)
     # після збереження показуємо місяць витрати, а сторінку можна безпечно перезавантажити
-    return redirect(url_for("report", p=request.form.get("back_p", "all"), m=f"{data['date'].year}-{data['date'].month:02d}"))
+    return redirect(url_for("report", m=f"{data['date'].year}-{data['date'].month:02d}"))

@@ -73,9 +73,9 @@ def month_stats(entries, person=None):
     return dict(sorted(months.items()))
 
 
-def last_bank_date(entries):
+def last_bank_date(entries, person=None):
     """Остання дата у виписках (готівку не рахуємо): за нею визначаємо неповний місяць."""
-    dates = [e.date for e in _transactions(entries, None) if "cash" not in e.tags]
+    dates = [e.date for e in _transactions(entries, person) if "cash" not in e.tags]
     return max(dates) if dates else None
 
 
