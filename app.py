@@ -10,6 +10,7 @@
 """
 import hmac
 import os
+import re
 import secrets
 import time
 from datetime import date
@@ -42,7 +43,13 @@ USER_VARS = {"olya": ("OLYA_LOGIN", "OLYA_PASSWORD_HASH"), "marko": ("MARKO_LOGI
 
 def configured():
     names = ["SECRET_KEY"] + [v for pair in USER_VARS.values() for v in pair]
-    return all(os.environ.get(k) for k in names)
+    if not all(os.environ.get(k) for k in names):
+        return False
+    for _, hash_var in USER_VARS.values():
+        if not re.match(r"^(pbkdf2:\w+:\d+|scrypt:\d+:\d+:\d+)\$[^$]+\$[0-9a-f]+$", os.environ[hash_var]):
+            app.logger.error("%s має неправильний формат: хеш має починатися з pbkdf2:sha256:... і містити два символи $", hash_var)
+            return False
+    return True
 
 
 def zl(x):
