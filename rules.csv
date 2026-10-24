@@ -18,3 +18,16 @@ Claude.ai,Expenses:Підписки,так
 Play —,Expenses:Телефон,так
 Rossmann,Expenses:Краса-і-Побут,ні
 Decathlon,Expenses:Спорт,ні
+Kaufland,Expenses:Продукти,ні
+Auchan,Expenses:Продукти,ні
+Pyszne,Expenses:Доставка-Їжі,ні
+Costa Coffee,Expenses:Кафе,ні
+Manekin,Expenses:Кафе,ні
+Orange,Expenses:Інтернет-і-Телефон,так
+PGE,Expenses:Світло,так
+Zdrofit,Expenses:Спорт,так
+YouTube Premium,Expenses:Підписки,так
+Super-Pharm,Expenses:Краса-і-Побут,ні
+Steam,Expenses:Розваги,ні
+Allegro,Expenses:Покупки,ні
+Northwind,Income:Зарплата,ні

@@ -1,3 +1,6 @@
 data/
-transactions.beancount
 report.html
+.venv/
+__pycache__/
+.main.beancount.picklecache
+.env

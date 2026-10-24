@@ -20,7 +20,7 @@ managed = defaultdict(Decimal)
 by_category = defaultdict(lambda: defaultdict(Decimal))
 
 for e in entries:
-    if not isinstance(e, Transaction) or e.narration == "Початковий залишок":
+    if not isinstance(e, Transaction) or e.narration == "Початковий залишок" or "olya" not in e.tags:
         continue
     m = e.date.month
     for p in e.postings:

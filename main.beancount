@@ -1,7 +1,10 @@
-option "title" "Фінанси Олі"
+option "title" "Фінанси Олі й Марка"
 option "operating_currency" "PLN"
 
-2026-07-31 open Assets:Банк PLN
+2026-07-31 open Assets:Банк-Оля PLN
+2026-07-31 open Assets:Банк-Марко PLN
+2026-07-31 open Assets:Готівка-Оля PLN
+2026-07-31 open Assets:Готівка-Марко PLN
 2026-07-31 open Equity:Початковий-Залишок PLN
 
 2026-07-31 open Income:Зарплата PLN
@@ -16,13 +19,22 @@ option "operating_currency" "PLN"
 2026-07-31 open Expenses:Телефон PLN
 2026-07-31 open Expenses:Краса-і-Побут PLN
 2026-07-31 open Expenses:Спорт PLN
+2026-07-31 open Expenses:Інтернет-і-Телефон PLN
+2026-07-31 open Expenses:Світло PLN
+2026-07-31 open Expenses:Розваги PLN
+2026-07-31 open Expenses:Покупки PLN
 2026-07-31 open Expenses:Без-Категорії PLN
 
-2026-07-31 * "Початковий залишок"
-  Assets:Банк                    4500.00 PLN
+2026-07-31 * "Початковий залишок" #olya
+  Assets:Банк-Оля                4500.00 PLN
+  Equity:Початковий-Залишок
+
+2026-07-31 * "Початковий залишок" #marko
+  Assets:Банк-Марко              2860.40 PLN
   Equity:Початковий-Залишок
 
 include "transactions.beancount"
+include "cash.beancount"
 
 2026-07-31 query "витрати-за-категоріями" "SELECT year, month, account, sum(position) AS \"сума\" WHERE account ~ '^Expenses' GROUP BY 1, 2, 3 ORDER BY 1, 2, 3"
 2026-07-31 query "дохід-і-витрати" "SELECT year, month, root(account, 1) AS \"тип\", sum(position) AS \"сума\" WHERE account ~ '^(Income:Зарплата|Expenses)' GROUP BY 1, 2, 3 ORDER BY 1, 2, 3"

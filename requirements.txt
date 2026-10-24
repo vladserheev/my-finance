@@ -1,0 +1,2 @@
+beancount>=3.2,<4
+flask>=3.0,<4

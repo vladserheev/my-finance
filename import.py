@@ -1,14 +1,17 @@
-"""Збирає transactions.beancount з усіх CSV у data/ і правил з rules.csv.
+"""Збирає transactions.beancount з виписок Олі й Марка і правил з rules.csv.
 
+Виписки лежать у demo-data/ (штучні дані): olya/*.csv (формат банку Олі, англійською)
+і marko/*.csv (формат банку Марка, польською, з крапкою з комою).
 Запуск: uv run python import.py
 """
 import csv
+import re
 from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
 
 ROOT = Path(__file__).parent
-BANK = "Assets:Банк"
+DATA = ROOT / "demo-data"
 NO_CATEGORY = "Expenses:Без-Категорії"
 OTHER_INCOME = "Income:Інше"
 
@@ -34,10 +37,22 @@ def find_rule(rules, description, amount):
     return (OTHER_INCOME if amount > 0 else NO_CATEGORY), False
 
 
-def read_rows():
-    """Рядки в порядку банку; однакові (дата, опис, сума, залишок) рахуємо раз."""
+# Хто, рахунок, початковий залишок на 31 липня 2026 (він же в main.beancount).
+PEOPLE = {
+    "olya": ("Assets:Банк-Оля", Decimal("4500.00")),
+    "marko": ("Assets:Банк-Марко", Decimal("2860.40")),
+}
+
+
+def number(text):
+    """'-1 234,56' або '-1234.56' -> Decimal."""
+    return Decimal(re.sub(r"\s", "", text).replace(",", "."))
+
+
+def read_olya():
+    """Банк Олі: рядки в порядку банку; однакові (дата, опис, сума, залишок) рахуємо раз."""
     seen = set()
-    for path in sorted((ROOT / "data").glob("*.csv")):
+    for path in sorted((DATA / "olya").glob("*.csv")):
         with open(path, encoding="utf-8", newline="") as f:
             for row in csv.DictReader(f):
                 if row["State"] != "COMPLETED":
@@ -46,38 +61,85 @@ def read_rows():
                 if key in seen:
                     continue
                 seen.add(key)
-                yield row
+                yield {
+                    "date": row["Completed Date"][:10],
+                    "description": row["Description"],
+                    "amount": number(row["Amount"]) - number(row["Fee"] or "0"),
+                    "balance": number(row["Balance"]),
+                }
 
 
-def main():
+def read_marko():
+    """Банк Марка: найновіші рядки зверху, тому читаємо у зворотному порядку.
+    Дата — дата księgowania (проведення), бо залишок рахується в порядку проведення."""
+    seen = set()
+    rows = []
+    for path in sorted((DATA / "marko").glob("*.csv")):
+        with open(path, encoding="utf-8", newline="") as f:
+            for line in csv.reader(f, delimiter=";"):
+                if len(line) != 6 or not re.match(r"\d\d\.\d\d\.\d{4}$", line[0]):
+                    continue  # шапка, порожні рядки, «Saldo początkowe»
+                key = (line[1], line[3], line[4], line[5])
+                if key in seen:
+                    continue
+                seen.add(key)
+                d, m, y = line[1].split(".")
+                rows.append({
+                    "date": f"{y}-{m}-{d}",
+                    "description": line[3],
+                    "amount": number(line[4]),
+                    "balance": number(line[5]),
+                })
+    yield from reversed(rows)
+
+
+def person_entries(person, rows, out):
+    """Додає операції людини в out. Повертає (кількість, останній рядок кожного місяця)."""
+    bank, opening = PEOPLE[person]
     rules = load_rules()
-    out = ["; Згенеровано import.py. Руками не правимо: файл перезаписується при кожному імпорті.", ""]
-    month_end = {}  # місяць -> останній у порядку банку рядок цього місяця
-    for row in read_rows():
-        month_end[row["Completed Date"][:7]] = row
-        amount = Decimal(row["Amount"]) - Decimal(row["Fee"] or "0")
-        description = row["Description"].replace('"', "'")
-        account, fixed = find_rule(rules, row["Description"], amount)
-        tag = " #fixed" if fixed else ""
-        out.append(f'{row["Completed Date"][:10]} * "{description}"{tag}')
-        out.append(f"  {BANK}  {amount:.2f} PLN")
-        out.append(f"  {account}  {-amount:.2f} PLN")
+    month_end = {}
+    running = opening
+    count = 0
+    for row in rows:
+        running += row["amount"]
+        if running != row["balance"]:
+            raise SystemExit(f"{person}: залишок у виписці не сходиться на {row['date']} {row['description']}")
+        month_end[row["date"][:7]] = row
+        description = row["description"].replace('"', "'")
+        account, fixed = find_rule(rules, row["description"], row["amount"])
+        tags = f" #{person}" + (" #fixed" if fixed else "")
+        out.append(f'{row["date"]} * "{description}"{tags}')
+        out.append(f"  {bank}  {row['amount']:.2f} PLN")
+        out.append(f"  {account}  {-row['amount']:.2f} PLN")
         out.append("")
-    count = (len(out) - 2) // 4
-    # Звірка з банком: залишок з останнього рядка місяця на наступний день після нього.
+        count += 1
+    # Звірка з банком: залишок останнього рядка місяця на наступний день після нього.
     # Для останнього місяця це день після останньої операції.
     months = sorted(month_end)
+    asserts = []
     for month in months:
         last = month_end[month]
-        last_day = date.fromisoformat(last["Completed Date"][:10])
+        last_day = date.fromisoformat(last["date"])
         if month == months[-1]:
             check_day = last_day + timedelta(days=1)
         else:
             check_day = (last_day.replace(day=1) + timedelta(days=32)).replace(day=1)
-        out.append(f'{check_day} balance {BANK}  {Decimal(last["Balance"]):.2f} PLN')
-    out.append("")
+        asserts.append(f"{check_day} balance {bank}  {last['balance']:.2f} PLN")
+    return count, asserts
+
+
+def main():
+    out = ["; Згенеровано import.py. Руками не правимо: файл перезаписується при кожному імпорті.", ""]
+    total = 0
+    all_asserts = []
+    for person, rows in (("olya", read_olya()), ("marko", read_marko())):
+        count, asserts = person_entries(person, rows, out)
+        total += count
+        all_asserts += asserts
+        print(f"{person}: операцій {count}, звірок із банком {len(asserts)}")
+    out += all_asserts + [""]
     (ROOT / "transactions.beancount").write_text("\n".join(out), encoding="utf-8")
-    print(f"Записано операцій: {count}, звірок із банком: {len(months)}")
+    print(f"Записано операцій: {total}")
 
 
 if __name__ == "__main__":
