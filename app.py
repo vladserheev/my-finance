@@ -134,10 +134,9 @@ REPORT = """
 <div class="tabs">
 {% for key, name in tabs %}<a href="{{ url_for('report', p=key, m=month_key) }}" class="{{ 'on' if key == person else '' }}">{{ name }}</a>{% endfor %}
 </div>
-<form method="get"><input type="hidden" name="p" value="{{ person }}">
-<select name="m" onchange="this.form.submit()" aria-label="Місяць">
-{% for key, name in month_options %}<option value="{{ key }}" {{ 'selected' if key == month_key else '' }}>{{ name }}</option>{% endfor %}
-</select><noscript><button>Показати</button></noscript></form>
+<div class="tabs">
+{% for key, name in month_options %}<a href="{{ url_for('report', p=person, m=key) }}" class="{{ 'on' if key == month_key else '' }}">{{ name }}</a>{% endfor %}
+</div>
 {% if incomplete %}<p class="note warn">Неповний місяць: виписка закінчується {{ last_date.day }} {{ last_month_gen }}.</p>{% endif %}
 <div class="cards">
 <div class="card"><small>Дохід (зарплата)</small><b>{{ s.salary|zl }}</b></div>
@@ -231,7 +230,7 @@ def report():
     return page(
         REPORT, message=message, ok=ok, person=person, month_key=f"{key[0]}-{key[1]:02d}",
         tabs=[("all", "Разом"), ("olya", "Оля"), ("marko", "Марко")],
-        month_options=[(f"{y}-{m:02d}", f"{tracker.MONTH_NAMES[m]} {y}") for y, m in all_months],
+        month_options=[(f"{y}-{m:02d}", tracker.MONTH_NAMES[m]) for y, m in all_months],
         s=s, rate=rate, categories=[(a.replace("-", " "), v) for a, v in cats],
         incomplete=incomplete, last_date=last_date,
         last_month_gen=GENITIVE[last_date.month] if last_date else "",
